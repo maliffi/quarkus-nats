@@ -1,0 +1,40 @@
+package org.example.quarkus.nats.service;
+
+import io.quarkiverse.reactive.messaging.nats.jetstream.client.api.SubscribeMessageMetadata;
+import io.quarkus.runtime.annotations.RegisterForReflection;
+import io.smallrye.mutiny.Uni;
+import jakarta.enterprise.context.ApplicationScoped;
+import org.eclipse.microprofile.reactive.messaging.Incoming;
+import org.eclipse.microprofile.reactive.messaging.Message;
+import org.example.quarkus.nats.model.Data;
+import org.jboss.logging.Logger;
+
+import java.util.Optional;
+
+@RegisterForReflection
+@ApplicationScoped
+public class DataService {
+    private final static Logger logger = Logger.getLogger(DataService.class);
+
+    volatile Optional<Data> lastData = Optional.empty();
+
+    @Incoming("data-consumer")
+    public Uni<Void> data(Message<Data> message) {
+        return Uni.createFrom().item(message)
+                .onItem().invoke(this::handleData)
+                .onItem().ignore().andContinueWithNull();
+    }
+
+    public Optional<Data> getLast() {
+        return lastData;
+    }
+
+    private void handleData(Message<Data> message) {
+        logger.infof("Received message: %s", message);
+        message.getMetadata(SubscribeMessageMetadata.class)
+                .ifPresent(metadata -> lastData = Optional.of(
+                        new Data(message.getPayload().getData(), metadata.headers().get("RESOURCE_ID").get(0),
+                                metadata.messageId(), message.getPayload().getCreationTime())));
+        message.ack();
+    }
+}

@@ -1,0 +1,50 @@
+name: quarkus-nats-example
+
+services:
+  nats:
+    container_name: quarkus-nats
+    image: nats:latest
+    networks:
+      - services-net
+    ports:
+      - 4222:4222
+    volumes:
+      - nats-data:/data
+      - ./nats/max_payload.conf:/max_payload.conf
+    command: "-js -sd /data --user ${NATS_USER} --pass ${NATS_PASSWORD} -c ./max_payload.conf"
+
+  nats-box:
+    container_name: quarkus-nats-natsbox
+    image: natsio/nats-box:latest
+    depends_on:
+      - nats
+    networks:
+      - services-net
+    volumes:
+      - ./nats/:/etc/nats/streams
+    command: >
+      sh -c "
+      nats --user=${NATS_USER} --password=${NATS_PASSWORD} --server=nats://quarkus-nats:4222 stream add --config /etc/nats/streams/harvester-stream.json &&
+      nats --user=${NATS_USER} --password=${NATS_PASSWORD} --server=nats://quarkus-nats:4222 kv add kev_harvester_status &&
+      tail -f /dev/null
+      "
+
+
+  jaeger:
+    container_name: quarkus-nats-jaeger
+    image: jaegertracing/jaeger:latest
+    networks:
+      - services-net
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+    environment:
+      - LOG_LEVEL=debug
+
+# - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+networks:
+  services-net:
+
+volumes:
+  nats-data:
